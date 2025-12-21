@@ -1,10 +1,13 @@
 import tkinter as tk
 import customtkinter as ctk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.figure import Figure
 import numpy as np
 import threading
 import sys
 import os
+from io import BytesIO
+from PIL import Image, ImageTk
 
 from core.physics import probability_density
 from core.grid import generate_grid
@@ -69,6 +72,7 @@ class App(ctk.CTk):
         self.content_frame.grid_rowconfigure(0, weight=1)
 
         self.cards = []
+        self.preview_images = {}  # Кэш для превью изображений
 
         self.menu_frame = ctk.CTkScrollableFrame(self.content_frame, label_text="Быстрый выбор орбиталей", label_font=ctk.CTkFont(size=18, weight="bold"))
         self.menu_frame.grid(row=0, column=0, sticky="nsew")
@@ -83,17 +87,85 @@ class App(ctk.CTk):
         
         self.show_menu()
 
+    def generate_preview(self, n, l, m, width=220, height=100):
+        """Генерирует миниатюрное превью орбитали"""
+        try:
+            extent = 3.0 * (n**2)
+            resolution = 42  # Увеличенное разрешение для лучшего качества
+            
+            X, Y, Z, R, Theta, Phi = generate_grid(extent, resolution)
+            prob_density = probability_density(n, l, m, R, Theta, Phi)
+            
+            # Создаем миниатюрную фигуру с увеличенным DPI
+            fig = Figure(figsize=(width/100, height/100), dpi=150, facecolor='black')
+            ax = fig.add_subplot(111, projection='3d')
+            ax.set_facecolor('black')
+            
+            max_val = np.max(prob_density)
+            vol_data = prob_density / max_val if max_val > 0 else prob_density
+            
+            mask = vol_data > 0.05
+            x_vis, y_vis, z_vis, v_vis = X[mask], Y[mask], Z[mask], vol_data[mask]
+            
+            if len(x_vis) > 0:
+                # Увеличенное количество точек для превью
+                max_preview_points = 12000
+                if len(x_vis) > max_preview_points:
+                    v_normalized = v_vis / np.max(v_vis)
+                    probabilities = 0.1 + 0.9 * v_normalized
+                    probabilities = probabilities / np.sum(probabilities)
+                    indices = np.random.choice(len(x_vis), size=max_preview_points, replace=False, p=probabilities)
+                    x_vis = x_vis[indices]
+                    y_vis = y_vis[indices]
+                    z_vis = z_vis[indices]
+                    v_vis = v_vis[indices]
+                
+                v_enhanced = np.power(v_vis, 0.5)
+                v_normalized = (v_enhanced - np.min(v_enhanced)) / (np.max(v_enhanced) - np.min(v_enhanced) + 1e-10)
+                
+                from matplotlib import cm
+                cmap = cm.get_cmap('plasma')
+                colors = cmap(v_normalized)
+                colors[:, 3] = np.clip(0.4 + 0.4 * v_normalized, 0.1, 0.8)
+                
+                # Немного увеличенный размер точек для лучшей видимости
+                ax.scatter(x_vis, y_vis, z_vis, c=colors, s=3, marker='o', edgecolors='none', depthshade=False)
+                ax.scatter([0], [0], [0], color='red', s=12, edgecolors='white', linewidth=0.6)
+                
+                limit = np.max(np.abs(x_vis)) * 1.1
+                ax.set_xlim(-limit, limit)
+                ax.set_ylim(-limit, limit)
+                ax.set_zlim(-limit, limit)
+            
+            ax.set_axis_off()
+            fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+            
+            # Сохраняем в буфер с увеличенным DPI
+            buf = BytesIO()
+            fig.savefig(buf, format='png', dpi=150, bbox_inches='tight', pad_inches=0, facecolor='black')
+            buf.seek(0)
+            
+            # Конвертируем в PIL Image
+            img = Image.open(buf)
+            img = img.resize((width, height), Image.Resampling.LANCZOS)
+            
+            return ImageTk.PhotoImage(img)
+        except Exception as e:
+            # В случае ошибки возвращаем пустое изображение
+            img = Image.new('RGB', (width, height), color='black')
+            return ImageTk.PhotoImage(img)
+    
     def setup_menu_cards(self):
         presets = [
-            {"name": "1s Основное состояние", "n": 1, "l": 0, "m": 0, "color": "#FF5733"},
-            {"name": "2p Полярное состояние", "n": 2, "l": 1, "m": 0, "color": "#33FF57"},
-            {"name": "3d Сложная", "n": 3, "l": 2, "m": 0, "color": "#3357FF"},
-            {"name": "4f Продвинутая", "n": 4, "l": 3, "m": 0, "color": "#F033FF"},
-            {"name": "2p (m=1) Состояние", "n": 2, "l": 1, "m": 1, "color": "#FFD433"},
-            {"name": "3p Орбиталь", "n": 3, "l": 1, "m": 0, "color": "#33FFF0"},
-            {"name": "3d (m=2) Состояние", "n": 3, "l": 2, "m": 2, "color": "#A133FF"},
-            {"name": "4d Орбиталь", "n": 4, "l": 2, "m": 0, "color": "#FF338A"},
-            {"name": "5g Теоретическая", "n": 5, "l": 4, "m": 0, "color": "#33FFA1"}
+            {"name": "1s Основное состояние", "n": 1, "l": 0, "m": 0},
+            {"name": "2p Полярное состояние", "n": 2, "l": 1, "m": 0},
+            {"name": "3d Сложная", "n": 3, "l": 2, "m": 0},
+            {"name": "4f Продвинутая", "n": 4, "l": 3, "m": 0},
+            {"name": "2p (m=1) Состояние", "n": 2, "l": 1, "m": 1},
+            {"name": "3p Орбиталь", "n": 3, "l": 1, "m": 0},
+            {"name": "3d (m=2) Состояние", "n": 3, "l": 2, "m": 2},
+            {"name": "4d Орбиталь", "n": 4, "l": 2, "m": 0},
+            {"name": "5g Теоретическая", "n": 5, "l": 4, "m": 0}
         ]
 
         cols = 3
@@ -106,9 +178,20 @@ class App(ctk.CTk):
             
             card.bind("<Button-1>", select_cmd)
             
-            preview = ctk.CTkFrame(card, width=220, height=100, fg_color=p["color"], corner_radius=8)
-            preview.pack(padx=15, pady=(15, 5))
-            preview.bind("<Button-1>", select_cmd)
+            # Создаем превью в фоновом потоке
+            preview_label = ctk.CTkLabel(card, text="Загрузка...", width=220, height=100, corner_radius=8)
+            preview_label.pack(padx=15, pady=(15, 5))
+            preview_label.bind("<Button-1>", select_cmd)
+            
+            # Генерируем превью в отдельном потоке
+            def generate_and_set(params=p, label=preview_label, card_idx=i):
+                preview_img = self.generate_preview(params['n'], params['l'], params['m'])
+                # Сохраняем ссылку на изображение, чтобы оно не удалилось
+                key = f"{params['n']}_{params['l']}_{params['m']}"
+                self.preview_images[key] = preview_img
+                self.after(0, lambda img=preview_img, lbl=label: lbl.configure(image=img, text=""))
+            
+            threading.Thread(target=generate_and_set, daemon=True).start()
             
             label = ctk.CTkLabel(card, text=p["name"], font=ctk.CTkFont(size=14, weight="bold"))
             label.pack(padx=15, pady=2)
