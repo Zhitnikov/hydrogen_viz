@@ -3,16 +3,25 @@ import numpy as np
 import plotly.graph_objects as go
 from matplotlib import cm
 
-def create_orbital_figure(density: np.ndarray, X: np.ndarray, Y: np.ndarray, Z: np.ndarray, n: int, l: int, m: int):
+
+def create_orbital_figure(density: np.ndarray, X: np.ndarray, Y: np.ndarray, Z: np.ndarray, n: int, l: int, m: int,
+                          sliced: bool = False):
     max_val = np.max(density)
     vol_data = density / max_val if max_val > 0 else density
+
+    # Если включен режим среза, обнуляем половину данных
+    if sliced:
+        vol_data = vol_data.copy()
+        vol_data[Y < 0] = 0  # Срезаем по оси Y
+        vol_data[Y > 1] = 0  # Срезаем по оси Y
+
     orbital_names = {0: 's', 1: 'p', 2: 'd', 3: 'f'}
     orb_char = orbital_names.get(l, '?')
-    
+
     fig = go.Figure(data=go.Volume(
         x=X.flatten(), y=Y.flatten(), z=Z.flatten(),
         value=vol_data.flatten(),
-        isomin=0.04, isomax=0.5,
+        isomin=0.03, isomax=0.5,
         opacity=0.15,
         surface_count=25,
         colorscale='Viridis',
@@ -20,15 +29,8 @@ def create_orbital_figure(density: np.ndarray, X: np.ndarray, Y: np.ndarray, Z: 
         showscale=False
     ))
 
-    fig.add_trace(go.Scatter3d(
-        x=[0], y=[0], z=[0],
-        mode='markers',
-        marker=dict(size=6, color='red', opacity=1.0, symbol='circle'),
-        name='Ядро'
-    ))
-
     fig.update_layout(
-        title=f"Орбиталь {n}{orb_char} (m={m})",
+        title=f"Орбиталь {n}{orb_char} (m={m}) {'[СРЕЗ]' if sliced else ''}",
         scene=dict(bgcolor="black"),
         paper_bgcolor="black",
         font=dict(color="white"),
@@ -49,7 +51,7 @@ def create_orbital_figure_matplotlib(density: np.ndarray, X: np.ndarray, Y: np.n
 
     if len(x_vis) > 0:
         # Рандомизированная выборка точек в зависимости от плотности вероятности
-        max_points = 50000  # Максимальное количество точек для отрисовки
+        max_points = 100000  # Максимальное количество точек для отрисовки
         
         if len(x_vis) > max_points:
             # Вероятностная выборка: вероятность отрисовки точки пропорциональна её плотности
