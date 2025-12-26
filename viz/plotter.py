@@ -1,7 +1,10 @@
 from matplotlib.figure import Figure
 import numpy as np
 import plotly.graph_objects as go
-from matplotlib import cm
+from matplotlib import cm, colors as mcolors
+
+# 1 а. е. (боhr) = 0.529177 Å. Переводим координаты для отображения.
+BOHR_TO_ANGSTROM = 0.529177
 
 
 def create_orbital_figure(density: np.ndarray, X: np.ndarray, Y: np.ndarray, Z: np.ndarray, n: int, l: int, m: int,
@@ -18,20 +21,42 @@ def create_orbital_figure(density: np.ndarray, X: np.ndarray, Y: np.ndarray, Z: 
     orbital_names = {0: 's', 1: 'p', 2: 'd', 3: 'f'}
     orb_char = orbital_names.get(l, '?')
 
-    fig = go.Figure(data=go.Volume(
-        x=X.flatten(), y=Y.flatten(), z=Z.flatten(),
-        value=vol_data.flatten(),
-        isomin=0.03, isomax=0.5,
-        opacity=0.15,
-        surface_count=25,
-        colorscale='Viridis',
-        caps=dict(x_show=False, y_show=False, z_show=False),
-        showscale=False
-    ))
+    # Переводим координаты в ангстремы для подписей осей
+    x_ang = (X * BOHR_TO_ANGSTROM).flatten()
+    y_ang = (Y * BOHR_TO_ANGSTROM).flatten()
+    z_ang = (Z * BOHR_TO_ANGSTROM).flatten()
+
+    fig = go.Figure(
+        data=go.Volume(
+            x=x_ang,
+            y=y_ang,
+            z=z_ang,
+            value=vol_data.flatten(),
+            isomin=0.03,
+            isomax=0.5,
+            opacity=0.15,
+            surface_count=25,
+            colorscale="Viridis",
+            caps=dict(x_show=False, y_show=False, z_show=False),
+            showscale=True,
+            colorbar=dict(
+                title="Отн. плотность",
+                tickformat=".2f",
+                thickness=16,
+                len=0.75,
+            ),
+        )
+    )
 
     fig.update_layout(
         title=f"Орбиталь {n}{orb_char} (m={m}) {'[СРЕЗ]' if sliced else ''}",
-        scene=dict(bgcolor="black"),
+        scene=dict(
+            bgcolor="black",
+            xaxis_title="x, Å",
+            yaxis_title="y, Å",
+            zaxis_title="z, Å",
+            aspectmode="cube",
+        ),
         paper_bgcolor="black",
         font=dict(color="white"),
         margin=dict(l=0, r=0, b=0, t=30)
@@ -91,23 +116,41 @@ def create_orbital_figure_matplotlib(density: np.ndarray, X: np.ndarray, Y: np.n
 
         # Адаптивный размер маркеров в зависимости от количества точек (маленькие точки)
         marker_size = max(3, min(15, 50000 / len(x_vis)))
+
+        # Переводим координаты в ангстремы для отображения
+        x_vis_ang = x_vis * BOHR_TO_ANGSTROM
+        y_vis_ang = y_vis * BOHR_TO_ANGSTROM
+        z_vis_ang = z_vis * BOHR_TO_ANGSTROM
         
-        ax.scatter(x_vis, y_vis, z_vis, c=colors, 
-                    s=marker_size, marker='o', edgecolors='none', depthshade=False)
+        ax.scatter(
+            x_vis_ang,
+            y_vis_ang,
+            z_vis_ang,
+            c=colors,
+            s=marker_size,
+            marker='o',
+            edgecolors='none',
+            depthshade=False,
+        )
         
         ax.scatter([0], [0], [0], color='red', s=45, edgecolors='white', linewidth=0.8)
         
-        limit = np.max(np.abs(x_vis)) * 1.15
+        limit = np.max(np.abs(x_vis_ang)) * 1.15
         
         ax.set_xlim(-limit, limit)
         ax.set_ylim(-limit, limit)
         ax.set_zlim(-limit, limit)
+
+        # Цветовая шкала вероятности
+        mappable = cm.ScalarMappable(norm=mcolors.Normalize(vmin=0, vmax=1), cmap=cmap)
+        mappable.set_array([])
+        fig.colorbar(mappable, ax=ax, shrink=0.65, pad=0.02, label="Отн. плотность")
     else:
         ax.text(0, 0, 0, "Нет данных", color='white', ha='center')
 
     ax.set_axis_off()
     orbital_names = {0: 's', 1: 'p', 2: 'd', 3: 'f'}
     orb_char = orbital_names.get(l, '?')
-    ax.set_title(f"Орбиталь {n}{orb_char}", color='white', fontsize=12, y=0.95)
+    ax.set_title(f"Орбиталь {n}{orb_char} (коорд. в Å)", color='white', fontsize=12, y=0.95)
     
     return fig
