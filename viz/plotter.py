@@ -107,12 +107,6 @@ def create_orbital_figure_matplotlib(density: np.ndarray, X: np.ndarray, Y: np.n
 
         marker_size = max(3, min(15, 50000 / len(x_vis)))
 
-        mask_slice = y_vis <= 0
-        x_vis = x_vis[mask_slice]
-        y_vis = y_vis[mask_slice]
-        z_vis = z_vis[mask_slice]
-        colors = colors[mask_slice]
-
         x_vis_ang = x_vis * BOHR_TO_ANGSTROM
         y_vis_ang = y_vis * BOHR_TO_ANGSTROM
         z_vis_ang = z_vis * BOHR_TO_ANGSTROM
