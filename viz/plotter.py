@@ -13,8 +13,8 @@ def create_orbital_figure(density: np.ndarray, X: np.ndarray, Y: np.ndarray, Z: 
     vol_data = density / max_val if max_val > 0 else density
 
     if sliced:
-        mask = np.abs(Y) <= SLICE_HALF_BOHR
-        vol_data = vol_data * mask
+        vol_data = vol_data.copy()
+        vol_data[Y > 0] = 0
 
     orbital_names = {0: 's', 1: 'p', 2: 'd', 3: 'f'}
     orb_char = orbital_names.get(l, '?')
@@ -76,57 +76,41 @@ def create_orbital_figure_matplotlib(density: np.ndarray, X: np.ndarray, Y: np.n
     x_vis, y_vis, z_vis, v_vis = X[mask], Y[mask], Z[mask], vol_data[mask]
 
     if len(x_vis) > 0:
-        # Рандомизированная выборка точек в зависимости от плотности вероятности
-        max_points = 100000  # Максимальное количество точек для отрисовки
+        max_points = 100000
         
         if len(x_vis) > max_points:
-            # Вероятностная выборка: вероятность отрисовки точки пропорциональна её плотности
-            # Нормализуем плотности для использования в качестве весов
             v_normalized = v_vis / np.max(v_vis)
-            # Добавляем минимальную вероятность для всех точек
             probabilities = 0.1 + 0.9 * v_normalized
             probabilities = probabilities / np.sum(probabilities)
-            
-            # Выбираем точки случайным образом с учетом вероятностей
             indices = np.random.choice(len(x_vis), size=max_points, replace=False, p=probabilities)
-            
             x_vis = x_vis[indices]
             y_vis = y_vis[indices]
             z_vis = z_vis[indices]
             v_vis = v_vis[indices]
         
-        v_enhanced = np.power(v_vis, 0.5)  # Гамма-коррекция для увеличения контраста
+        v_enhanced = np.power(v_vis, 0.5)
         v_normalized = (v_enhanced - np.min(v_enhanced)) / (np.max(v_enhanced) - np.min(v_enhanced) + 1e-10)
         
         depth = x_vis + y_vis + z_vis 
         d_min, d_max = np.min(depth), np.max(depth)
         norm_depth = (depth - d_min) / (d_max - d_min) if d_max > d_min else np.ones_like(depth)
 
-        # Увеличенная яркость и контрастность
         brightness_coeff = 0.4 + norm_depth * 1.2
-        alphas = 0.4 + 0.5 * v_normalized  # Альфа зависит от плотности
+        alphas = 0.4 + 0.5 * v_normalized
         
         cmap = cm.get_cmap('plasma')
         colors = cmap(v_normalized)
         final_alphas = alphas * brightness_coeff
-        final_alphas = np.clip(final_alphas, 0.0, 1.0)  # Ограничиваем значения 0-1
+        final_alphas = np.clip(final_alphas, 0.0, 1.0)
         colors[:, 3] = final_alphas
 
         marker_size = max(3, min(15, 50000 / len(x_vis)))
 
-        mask_slice = np.abs(y_vis) <= SLICE_HALF_BOHR
+        mask_slice = y_vis <= 0
         x_vis = x_vis[mask_slice]
         y_vis = y_vis[mask_slice]
         z_vis = z_vis[mask_slice]
         colors = colors[mask_slice]
-
-        if len(x_vis) == 0:
-            ax.text(0, 0, 0, "Нет данных", color='white', ha='center')
-            ax.set_axis_off()
-            orbital_names = {0: 's', 1: 'p', 2: 'd', 3: 'f'}
-            orb_char = orbital_names.get(l, '?')
-            ax.set_title(f"Орбиталь {n}{orb_char} (коорд. в Å)", color='white', fontsize=12, y=0.95)
-            return fig
 
         x_vis_ang = x_vis * BOHR_TO_ANGSTROM
         y_vis_ang = y_vis * BOHR_TO_ANGSTROM
@@ -153,7 +137,9 @@ def create_orbital_figure_matplotlib(density: np.ndarray, X: np.ndarray, Y: np.n
 
         mappable = cm.ScalarMappable(norm=mcolors.Normalize(vmin=0, vmax=1), cmap=cmap)
         mappable.set_array([])
-        fig.colorbar(mappable, ax=ax, shrink=0.65, pad=0.02, label="Плотность")
+        cbar = fig.colorbar(mappable, ax=ax, shrink=0.65, pad=0.02, label="Отн. плотность")
+        cbar.ax.yaxis.label.set_color("white")
+        cbar.ax.tick_params(colors="white")
     else:
         ax.text(0, 0, 0, "Нет данных", color='white', ha='center')
 
