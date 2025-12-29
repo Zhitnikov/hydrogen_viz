@@ -4,7 +4,8 @@ import plotly.graph_objects as go
 from matplotlib import cm, colors as mcolors
 
 BOHR_TO_ANGSTROM = 0.529177
-SLICE_HALF_BOHR = 1.5
+# Полуширина среза в борнах (тонкий слой)
+SLICE_HALF_BOHR = 0.5
 
 
 def create_orbital_figure(density: np.ndarray, X: np.ndarray, Y: np.ndarray, Z: np.ndarray, n: int, l: int, m: int,
@@ -14,7 +15,7 @@ def create_orbital_figure(density: np.ndarray, X: np.ndarray, Y: np.ndarray, Z: 
 
     if sliced:
         vol_data = vol_data.copy()
-        vol_data[Y > 0] = 0
+        vol_data[np.abs(Y) > SLICE_HALF_BOHR] = 0
 
     orbital_names = {0: 's', 1: 'p', 2: 'd', 3: 'f'}
     orb_char = orbital_names.get(l, '?')
