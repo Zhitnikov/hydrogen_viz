@@ -3,8 +3,8 @@ import numpy as np
 import plotly.graph_objects as go
 from matplotlib import cm, colors as mcolors
 
-# 1 а. е. (боhr) = 0.529177 Å. Переводим координаты для отображения.
 BOHR_TO_ANGSTROM = 0.529177
+SLICE_HALF_BOHR = 1.5
 
 
 def create_orbital_figure(density: np.ndarray, X: np.ndarray, Y: np.ndarray, Z: np.ndarray, n: int, l: int, m: int,
@@ -12,11 +12,9 @@ def create_orbital_figure(density: np.ndarray, X: np.ndarray, Y: np.ndarray, Z: 
     max_val = np.max(density)
     vol_data = density / max_val if max_val > 0 else density
 
-    # Если включен режим среза, обнуляем половину данных
     if sliced:
-        vol_data = vol_data.copy()
-        vol_data[Y < 0] = 0  # Срезаем по оси Y
-        vol_data[Y > 1] = 0  # Срезаем по оси Y
+        mask = np.abs(Y) <= SLICE_HALF_BOHR
+        vol_data = vol_data * mask
 
     orbital_names = {0: 's', 1: 'p', 2: 'd', 3: 'f'}
     orb_char = orbital_names.get(l, '?')
@@ -37,11 +35,14 @@ def create_orbital_figure(density: np.ndarray, X: np.ndarray, Y: np.ndarray, Z: 
             opacity=0.15,
             surface_count=25,
             colorscale="Viridis",
+            cmin=0,
+            cmax=1,
             caps=dict(x_show=False, y_show=False, z_show=False),
             showscale=True,
             colorbar=dict(
-                title="Отн. плотность",
+                title="Плотность",
                 tickformat=".2f",
+                tickvals=[0, 0.25, 0.5, 0.75, 1],
                 thickness=16,
                 len=0.75,
             ),
@@ -94,7 +95,6 @@ def create_orbital_figure_matplotlib(density: np.ndarray, X: np.ndarray, Y: np.n
             z_vis = z_vis[indices]
             v_vis = v_vis[indices]
         
-        # Увеличение контрастности: применяем гамма-коррекцию для усиления контраста
         v_enhanced = np.power(v_vis, 0.5)  # Гамма-коррекция для увеличения контраста
         v_normalized = (v_enhanced - np.min(v_enhanced)) / (np.max(v_enhanced) - np.min(v_enhanced) + 1e-10)
         
@@ -106,18 +106,28 @@ def create_orbital_figure_matplotlib(density: np.ndarray, X: np.ndarray, Y: np.n
         brightness_coeff = 0.4 + norm_depth * 1.2
         alphas = 0.4 + 0.5 * v_normalized  # Альфа зависит от плотности
         
-        # Изменение цветовой схемы: используем плазму для более ярких и контрастных цветов
         cmap = cm.get_cmap('plasma')
         colors = cmap(v_normalized)
-        # Нормализуем альфа-канал, чтобы значения были в диапазоне 0-1
         final_alphas = alphas * brightness_coeff
         final_alphas = np.clip(final_alphas, 0.0, 1.0)  # Ограничиваем значения 0-1
         colors[:, 3] = final_alphas
 
-        # Адаптивный размер маркеров в зависимости от количества точек (маленькие точки)
         marker_size = max(3, min(15, 50000 / len(x_vis)))
 
-        # Переводим координаты в ангстремы для отображения
+        mask_slice = np.abs(y_vis) <= SLICE_HALF_BOHR
+        x_vis = x_vis[mask_slice]
+        y_vis = y_vis[mask_slice]
+        z_vis = z_vis[mask_slice]
+        colors = colors[mask_slice]
+
+        if len(x_vis) == 0:
+            ax.text(0, 0, 0, "Нет данных", color='white', ha='center')
+            ax.set_axis_off()
+            orbital_names = {0: 's', 1: 'p', 2: 'd', 3: 'f'}
+            orb_char = orbital_names.get(l, '?')
+            ax.set_title(f"Орбиталь {n}{orb_char} (коорд. в Å)", color='white', fontsize=12, y=0.95)
+            return fig
+
         x_vis_ang = x_vis * BOHR_TO_ANGSTROM
         y_vis_ang = y_vis * BOHR_TO_ANGSTROM
         z_vis_ang = z_vis * BOHR_TO_ANGSTROM
@@ -141,10 +151,9 @@ def create_orbital_figure_matplotlib(density: np.ndarray, X: np.ndarray, Y: np.n
         ax.set_ylim(-limit, limit)
         ax.set_zlim(-limit, limit)
 
-        # Цветовая шкала вероятности
         mappable = cm.ScalarMappable(norm=mcolors.Normalize(vmin=0, vmax=1), cmap=cmap)
         mappable.set_array([])
-        fig.colorbar(mappable, ax=ax, shrink=0.65, pad=0.02, label="Отн. плотность")
+        fig.colorbar(mappable, ax=ax, shrink=0.65, pad=0.02, label="Плотность")
     else:
         ax.text(0, 0, 0, "Нет данных", color='white', ha='center')
 
